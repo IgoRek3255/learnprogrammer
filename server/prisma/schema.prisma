@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum ExerciseType {
+  CODE
+  QUIZ
+  FILL_BLANKS
+  MATCHING
+}
+
+enum SubmissionStatus {
+  PENDING
+  PASSED
+  FAILED
+  ERROR
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  TEXT
+}
+
+enum TestAttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  passwordHash String         @map("password_hash")
+  name         String
+  role         Role           @default(STUDENT)
+  avatar       String?
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  courses         Course[]
+  tests           Test[]       @relation("TestCreator")
+  testAttempts    TestAttempt[]
+  submissions     Submission[]
+  progress        Progress[]
+  aiInteractions  AiInteraction[]
+
+  @@map("users")
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  imageUrl    String?  @map("image_url")
+  published   Boolean  @default(false)
+  teacherId   String   @map("teacher_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  teacher User      @relation(fields: [teacherId], references: [id])
+  topics  Topic[]
+  tests   Test[]
+
+  @@map("courses")
+}
+
+model Topic {
+  id          String   @id @default(uuid())
+  title       String
+  content     String
+  orderIndex  Int      @map("order_index")
+  courseId    String   @map("course_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  exercises Exercise[]
+  tests     Test[]
+
+  @@map("topics")
+}
+
+model Exercise {
+  id           String       @id @default(uuid())
+  title        String
+  description  String
+  type         ExerciseType @default(CODE)
+  difficulty   Difficulty   @default(BEGINNER)
+  templateCode String?      @map("template_code")
+  testCode     String?      @map("test_code")
+  solution     String?
+  orderIndex   Int          @default(0) @map("order_index")
+  topicId      String       @map("topic_id")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  topic         Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  hints         Hint[]
+  submissions   Submission[]
+  progress      Progress[]
+  aiInteractions AiInteraction[]
+
+  @@map("exercises")
+}
+
+model Hint {
+  id         String   @id @default(uuid())
+  content    String
+  orderIndex Int      @map("order_index")
+  exerciseId String   @map("exercise_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@map("hints")
+}
+
+model Submission {
+  id         String           @id @default(uuid())
+  code       String
+  status     SubmissionStatus @default(PENDING)
+  score      Int?
+  feedback   String?
+  userId     String           @map("user_id")
+  exerciseId String           @map("exercise_id")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id])
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+
+  @@map("submissions")
+}
+
+model Progress {
+  id         String   @id @default(uuid())
+  completed  Boolean  @default(false)
+  score      Int?
+  attempts   Int      @default(0)
+  userId     String   @map("user_id")
+  exerciseId String   @map("exercise_id")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id])
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+
+  @@unique([userId, exerciseId])
+  @@map("progress")
+}
+
+model AiInteraction {
+  id         String   @id @default(uuid())
+  prompt     String
+  response   String
+  type       String   @default("hint")
+  userId     String   @map("user_id")
+  exerciseId String?  @map("exercise_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User      @relation(fields: [userId], references: [id])
+  exercise Exercise? @relation(fields: [exerciseId], references: [id])
+
+  @@map("ai_interactions")
+}
+
+model Test {
+  id           String   @id @default(uuid())
+  title        String
+  description  String
+  timeLimit    Int      @default(0) @map("time_limit")
+  passingScore Int      @default(60) @map("passing_score")
+  published    Boolean  @default(false)
+  courseId     String   @map("course_id")
+  topicId      String?  @map("topic_id")
+  createdBy    String   @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  creator   User             @relation("TestCreator", fields: [createdBy], references: [id])
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  topic     Topic?           @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  questions TestQuestion[]
+  attempts  TestAttempt[]
+
+  @@map("tests")
+}
+
+model TestQuestion {
+  id        String       @id @default(uuid())
+  text      String
+  type      QuestionType @default(SINGLE_CHOICE)
+  points    Int          @default(1)
+  orderIndex Int         @default(0) @map("order_index")
+  testId    String       @map("test_id")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  test    Test               @relation(fields: [testId], references: [id], onDelete: Cascade)
+  options TestQuestionOption[]
+  answers TestAnswer[]
+
+  @@map("test_questions")
+}
+
+model TestQuestionOption {
+  id         String @id @default(uuid())
+  text       String
+  isCorrect  Boolean @default(false) @map("is_correct")
+  questionId String @map("question_id")
+
+  question TestQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("test_question_options")
+}
+
+model TestAttempt {
+  id         String            @id @default(uuid())
+  status     TestAttemptStatus @default(IN_PROGRESS)
+  score      Int?
+  maxScore   Int               @map("max_score")
+  startedAt  DateTime          @default(now()) @map("started_at")
+  completedAt DateTime?        @map("completed_at")
+  userId     String            @map("user_id")
+  testId     String            @map("test_id")
+
+  user    User         @relation(fields: [userId], references: [id])
+  test    Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers TestAnswer[]
+
+  @@map("test_attempts")
+}
+
+model TestAnswer {
+  id         String @id @default(uuid())
+  value      String
+  isCorrect  Boolean @default(false) @map("is_correct")
+  attemptId  String @map("attempt_id")
+  questionId String @map("question_id")
+
+  attempt  TestAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question TestQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("test_answers")
+}
